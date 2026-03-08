@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.env
+venv/
+*.db
+
+# 数据
+data/cache/*
+!data/cache/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
+
+# IDE
+.vscode/
+.idea/
