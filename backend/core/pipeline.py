@@ -7,6 +7,7 @@ from typing import Dict
 import difflib
 import asyncio
 
+search_semaphore = asyncio.Semaphore(2)
 def deduplicate_evidences(evidences, similarity_threshold=0.8):
      """
      基于标题的去重，只保留第一个结果
@@ -51,9 +52,11 @@ async def process_news(news_text: str) -> Dict:
      #2.验证(异步验证)
      async def process_single_claim(claim: str) -> Dict:
           loop = asyncio.get_event_loop()
-          evidences = await loop.run_in_executor(
-               None, search_evidence, claim, config.BAIDU_API_KEY
-          )
+          #同时最多使用4个资源
+          async with search_semaphore:
+               evidences = await loop.run_in_executor(
+                    None, search_evidence, claim, config.BAIDU_API_KEY
+               )
           #去重
           before_dedup = len(evidences)
           evidences = deduplicate_evidences(evidences, similarity_threshold=0.8)

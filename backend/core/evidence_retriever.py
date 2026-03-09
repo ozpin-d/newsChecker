@@ -2,14 +2,37 @@
 import requests
 from typing import List, Dict
 from ..config import config
+import time
+import hashlib
+import threading
+
+#缓存结构：{key:(timestamp,evidences)}
+_cache = {}
+_cache_lock = threading.Lock()
+CACHE_TTL = 600
+
+def _make_cache_key(claim: str) -> str:
+    """根据主张生成缓存键（MD5哈希）"""
+    return hashlib.md5(claim.encode('utf-8')).hexdigest()
 
 def search_evidence(claim: str, api_key: str) -> List[Dict]:
     """
     使用百度AI搜索API检索证据
     官方文档：https://cloud.baidu.com/doc/qianfan-api/s/Wmbq4z7e5
     """
-    print(f"正在为主张检索证据：{claim[:50]}...")
 
+    key = _make_cache_key(claim)
+
+    with _cache_lock:
+        #检查缓存
+        if key in _cache:
+            timestamp, evidences = _cache[key]
+            if time.time() - timestamp < CACHE_TTL: #时间没到
+                print("从缓存中获取数据")
+                return [e.copy() for e in evidences]
+            else:
+                print("缓存已过期，重新搜索")
+    print(f"正在为主张检索证据：{claim[:50]}...")
     #如果没传入api_key则使用config中的
     if api_key is None:
         api_key = config.BAIDU_API_KEY
@@ -62,6 +85,11 @@ def search_evidence(claim: str, api_key: str) -> List[Dict]:
                     "authority_score": ref.get("authority_score", 0)#百度提供的权威性评分
                 })
         print(f"检索到{len(evidences)}条证据")
+
+        #存入缓存
+        with _cache_lock:
+            _cache[key] = (time.time(), evidences)
+        
         return evidences
     except Exception as e:
         print(f"搜索失败: {e}")
