@@ -50,11 +50,11 @@ if st.button("开始检测", type="primary", use_container_width=True):
                             desc = "部分存疑"
                         else:
                             desc = "不可信"
-                        st.metric("整体可信度", f"{score}%", delta=desc)
+                        st.metric("整体可信度", f"{score:.1f}%", delta=desc)
                     
                     st.subheader("主张明细")
                     for claim in result["claims"]:
-                        with st.expander(f"{claim['claim'][:50]}... - {claim['verdict']} ({claim['confidence']}%)"):
+                        with st.expander(f"{claim['claim'][:50]}... - {claim['verdict']} ({claim['confidence']:.4f}%)"):
                             st.write(f"理由：{claim['reason']}")
                             if claim['evidences']:
                                 st.write("证据来源：")

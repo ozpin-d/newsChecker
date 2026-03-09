@@ -12,7 +12,7 @@ class NewsRequest(BaseModel):
 
 @router.post("/check")
 async def check_news(request: NewsRequest):
-    if not request.text and request.url: #非空处理
+    if not request.text and not request.url: #非空处理
         raise HTTPException(status_code=400, detail="请提供新闻文本或URL")
     if request.url:
         news_text = extract_from_url(request.url)
@@ -30,6 +30,8 @@ async def check_news(request: NewsRequest):
         print("="*50)
         return {"success": True, "data": result}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"DEAL ERROR:{str(e)}")
 
 @router.get("/history")
