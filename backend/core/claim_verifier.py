@@ -20,21 +20,21 @@ def verify_claim(claim: str, evidences: List[Dict]) -> Dict:
 
     #提示词
     prompt = f"""
-你是一个专业的事实核查员。请基于提供的证据，验证以下主张的真实性。
+    你是一个专业的事实核查员。请基于提供的证据，验证以下主张的真实性。
 
-主张：{claim}
+    主张：{claim}
 
-检索到的证据：
-{evidence_text}
+    检索到的证据：
+    {evidence_text}
 
-请输出JSON格式的评估结果，包含：
-- verdict: 取值 "支持"、"反对"、"存疑"、"证据不足"
-- confidence: 0-100的置信度分数
-- reason: 简要理由
-- key_evidence: 关键证据的链接列表
+    请输出JSON格式的评估结果，包含：
+    - verdict: 取值 "支持"、"反对"、"存疑"、"证据不足"
+    - confidence: 0-100的置信度分数
+    - reason: 简要理由
+    - key_evidence: 关键证据的链接列表
 
-只返回JSON，不要有其他内容。
-"""
+    只返回JSON，不要有其他内容。
+    """
     
     try: 
         response = client.chat.completions.create(

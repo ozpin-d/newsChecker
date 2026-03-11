@@ -7,3 +7,4 @@ beautifulsoup4==4.12.2
 python-dotenv==1.0.0
 chromadb==0.4.18
 pydantic==2.4.2
+newspaper3k==0.2.8

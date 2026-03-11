@@ -16,15 +16,15 @@ def decompose_claim(news_text: str) -> List[str]:
     参考Loki的Decomposer设计[citation:7]
     """
     prompt = f"""
-你是一个专业的事实核查助手。请将以下新闻文本分解成若干个独立的、可验证的原子主张。
-要求：
-1. 每个主张应该是具体的事实陈述，而非观点或推测
-2. 输出格式：以JSON数组形式返回，每个元素是一个字符串
-3. 只返回JSON，不要有其他解释
+    你是一个专业的事实核查助手。请将以下新闻文本分解成若干个独立的、可验证的原子主张。
+    要求：
+    1. 每个主张应该是具体的事实陈述，而非观点或推测
+    2. 输出格式：以JSON数组形式返回，每个元素是一个字符串
+    3. 只返回JSON，不要有其他解释
 
-新闻文本：
-{news_text}
-"""
+    新闻文本：
+    {news_text}
+    """
     try: 
         response = client.chat.completions.create(
             model=config.DEEPSEEK_MODULE,

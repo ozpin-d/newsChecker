@@ -1,14 +1,15 @@
 #整合流水线
 from .claim_decomposer import decompose_claim
 from .claim_verifier import verify_claim
-from .evidence_retriever import search_evidence
+from .evidence_retriever import EvidenceRetriever
 from ..config import config
-from typing import Dict
+from typing import Dict, List, Optional
 import difflib
 import asyncio
 
-search_semaphore = asyncio.Semaphore(2)
-def deduplicate_evidences(evidences, similarity_threshold=0.8):
+retriever = EvidenceRetriever(config.BAIDU_API_KEY)#创建证据检索模块实例
+
+def deduplicate_evidences(evidences, similarity_threshold=0.8) -> List[Dict]:
      """
      基于标题的去重，只保留第一个结果
      """
@@ -42,47 +43,57 @@ def deduplicate_evidences(evidences, similarity_threshold=0.8):
           unique = [evidences[0]]
      return unique
 
-async def process_news(news_text: str) -> Dict:
+async def process_single_claim(claim: str, original_url: Optional[str] = None, original_title: Optional[str] = None) -> Dict:
+     """
+     处理单个claim
+     检索，去重，验证
+     """
+     loop = asyncio.get_event_loop()
+     #异步检索
+     evidences = await retriever.search(claim, original_url, original_title)
+     #去重
+     before_dedup = len(evidences)
+     evidences = deduplicate_evidences(evidences, similarity_threshold=0.8)
+     print(f"去重后证据数量: {len(evidences)} (去除了 {before_dedup - len(evidences)} 条)")
+
+     #验证
+     verdict = await loop.run_in_executor(
+          None, verify_claim, claim, evidences
+     )
+
+     return{
+          "claim": claim,
+          "verdict": verdict.get("verdict","未知"),
+          "confidence": verdict.get("confidence",0),
+          "reason": verdict.get("reason",""),
+          "evidences": evidences[:3],
+     }
+async def process_news(news_text: str, original_url: Optional[str] = None, original_title: Optional[str] = None) -> Dict:
      """
     完整的新闻处理流水线
     """
      #1.分解
      claims = decompose_claim(news_text)
-
-     #2.验证(异步验证)
-     async def process_single_claim(claim: str) -> Dict:
-          loop = asyncio.get_event_loop()
-          #同时最多使用4个资源
-          async with search_semaphore:
-               evidences = await loop.run_in_executor(
-                    None, search_evidence, claim, config.BAIDU_API_KEY
-               )
-          #去重
-          before_dedup = len(evidences)
-          evidences = deduplicate_evidences(evidences, similarity_threshold=0.8)
-          print(f"去重后证据数量: {len(evidences)} (去除了 {before_dedup - len(evidences)} 条)")
-
-          #验证
-          verdict = await loop.run_in_executor(
-               None, verify_claim, claim, evidences
-          )
-
-          return{
-               "claim": claim,
-               "verdict": verdict.get("verdict","未知"),
-               "confidence": verdict.get("confidence",0),
-               "reason": verdict.get("reason",""),
-               "evidences": evidences[:3],
+     if not claims:
+          return {
+               "claims": [],
+               "claims_count": 0,
+               "overall_score": 0,
           }
-
-     #并发执行
-     tasks = [process_single_claim(claim) for claim in claims]
+     #2.并发执行
+     tasks = [process_single_claim(claim, original_url, original_title) for claim in claims]
      results = await asyncio.gather(*tasks)
 
      #3.计算可信度
-     confidence_scores = [r["confidence"] for r in results if isinstance(r["confidence"],(int,float))]
-     overall_score = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0
-
+     total_weight = 0.0
+     weighted_sum = 0.0
+     for r in results:
+          # 计算总权重
+          weight = r["confidence"] / 100.0
+          weighted_sum += r["confidence"] * weight
+          total_weight += weight
+     overall_score = weighted_sum / total_weight if total_weight > 0 else 0
+   
      return {
           "overall_score": overall_score,
           "claims": results,
