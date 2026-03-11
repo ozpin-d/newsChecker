@@ -10,6 +10,8 @@ from requests.adapters import HTTPAdapter
 from requests.exceptions import RequestException, HTTPError
 from urllib3.util.retry import Retry
 
+logger = logging.getLogger(__name__)
+
 #限流信号量（控制对百度API的并发）
 _search_semaphore = asyncio.Semaphore(3)
 
@@ -124,20 +126,20 @@ class EvidenceRetriever:
                         "BILLING_INSUFFICIENT_BALANCE": "账户欠费（需充值）"
                     }.get(error_code, "配额异常")
 
-                    logging.error(f"百度搜索API{error_type}。错误码：{error_code}，详情：{error_detail}")
+                    logger.error(f"百度搜索API{error_type}。错误码：{error_code}，详情：{error_detail}")
                     raise QuotaExceededError(f"{error_type}: {error_detail}") from e
                 else:
                     #QPS超限,记录并让重试机制处理 
-                    logging.warning(f"百度搜索API请求限流({error_code})，正在重试...详情{error_detail}")
+                    logger.warning(f"百度搜索API请求限流({error_code})，正在重试...详情{error_detail}")
                     raise # 重新抛出，让Session的重试机制处理
             elif 500 <= status_code < 600:
-                logging.warning(f"百度搜索API请求失败({status_code})，正在重试...详情{error_detail}")
+                logger.warning(f"百度搜索API请求失败({status_code})，正在重试...详情{error_detail}")
                 raise
             else:
-                logging.error(f"百度搜索API请求失败({status_code})，请检查API密钥和网络连接，详情{error_detail}")
+                logger.error(f"百度搜索API请求失败({status_code})，请检查API密钥和网络连接，详情{error_detail}")
                 return []
         except RequestException as e:
-            logging.error(f"百度搜索API请求失败，请检查API密钥和网络连接，详情{e}")
+            logger.error(f"百度搜索API请求失败，请检查API密钥和网络连接，详情{e}")
             raise
 
         try:
@@ -155,7 +157,7 @@ class EvidenceRetriever:
             return evidences
         except ValueError as e:
             #JSON 解析错误
-            logging.error(f"API返回非JSON: {e}")
+            logger.error(f"API返回非JSON: {e}")
             return []
         
     def _parse_error_response(self, response: requests.Response) -> str:
@@ -197,6 +199,7 @@ class EvidenceRetriever:
                 sim = difflib.SequenceMatcher(None, title, original_title).ratio()
                 if sim > 0.7:
                     continue
+            filtered.append(e)
         return filtered
     
     def _make_cache_key(self, claim: str) -> str:

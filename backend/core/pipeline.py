@@ -58,7 +58,10 @@ async def process_single_claim(claim: str, original_url: Optional[str] = None, o
 
      #验证
      verdict = await loop.run_in_executor(
-          None, verify_claim, claim, evidences
+          None,
+          verify_claim,
+          claim,
+          evidences
      )
 
      return{
@@ -95,7 +98,7 @@ async def process_news(news_text: str, original_url: Optional[str] = None, origi
      overall_score = weighted_sum / total_weight if total_weight > 0 else 0
    
      return {
-          "overall_score": overall_score,
+          "overall_score": round(overall_score, 1),
           "claims": results,
           "claims_count": len(results),
      }
