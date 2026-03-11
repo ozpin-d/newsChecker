@@ -12,15 +12,26 @@ def verify_claim(claim: str, evidences: List[Dict]) -> Dict:
     基于证据验证主张的真实性
     输出：支持/反对/存疑 + 置信度 + 理由
     """
-    # 将证据拼接成文本
+    #对证据按权威性进行排序
+    sorted_evidences = sorted(
+        evidences,
+        key=lambda x: x.get('authority_source', 0),
+        reverse=True,
+    )
+
+    #取前5条高权威证据用于验证
+    top_evidences = sorted_evidences[:5]
+
+    # 将证据拼接成文本,强调权威性和证据来源
     evidence_text = "\n\n".join([
-        f"来源{i+1}:{e['title']}\n摘要：{e['snippet']}\n链接：{e['link']}"
-        for i, e in enumerate(evidences)
+        f"来源{i+1}：{e['source']}（权威性评分：{e['authority_score']}）\n标题：{e['title']}\n摘要：{e['snippet']}\n链接：{e['link']}"
+        for i, e in enumerate(top_evidences)
     ])
 
     #提示词
     prompt = f"""
     你是一个专业的事实核查员。请基于提供的证据，验证以下主张的真实性。
+    权威性评分越高，证据越可靠。
 
     主张：{claim}
 
