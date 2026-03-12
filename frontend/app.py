@@ -42,6 +42,7 @@ if st.button("开始检测", type="primary", use_container_width=True):
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         score = result["overall_score"]
+                        verdict = result.get("overall_verdict", "")
                         if score >= 80:
                             desc = "高度可信"
                         elif score >= 60:
@@ -51,6 +52,9 @@ if st.button("开始检测", type="primary", use_container_width=True):
                         else:
                             desc = "不可信"
                         st.metric("整体可信度", f"{score:.1f}%", delta=desc)
+                        st.markdown(f"新闻核心判断：<h2 style='margin-bottom:0;'>{verdict}</h2>", unsafe_allow_html=True)
+                    with col2:
+                        st.metric("分析主张数", result.get("claims_count", 0))
                     
                     st.subheader("主张明细")
                     for claim in result["claims"]:

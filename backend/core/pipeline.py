@@ -120,17 +120,34 @@ async def process_news(
      results = await asyncio.gather(*tasks, return_exceptions=False)
 
      #3.计算可信度
-     total_weight = 0.0
-     weighted_sum = 0.0
-     for r in results:
-          # 计算总权重
-          weight = r["confidence"] / 100.0
-          weighted_sum += r["confidence"] * weight
-          total_weight += weight
-     overall_score = weighted_sum / total_weight if total_weight > 0 else 0
+     #优先计算反对主张的最高置信度
+     oppose_confidences = [r["confidence"] for r in results if r["verdict"] == "反对"]
+     max_oppose = max(oppose_confidences) / 100.0 if oppose_confidences else 0.0
+
+     #计算支持主张的平均分
+     support_confidences = [r["confidence"] for r in results if r["verdict"] == "支持"]
+     avg_support = sum(support_confidences) / len(support_confidences) if support_confidences else 0.0
+
+     #计算整体可信度
+     if max_oppose > 0.7:
+          overall_score = avg_support * (1-max_oppose)
+     else:
+          overall_score = avg_support if support_confidences else 0.0
+
+     #整体判断标签
+     overall_verdict = "不实" if overall_score > 0.7 else "部分可信" if support_confidences else "证据不足"
+     # total_weight = 0.0
+     # weighted_sum = 0.0
+     # for r in results:
+     #      # 计算总权重
+     #      weight = r["confidence"] / 100.0
+     #      weighted_sum += r["confidence"] * weight
+     #      total_weight += weight
+     # overall_score = weighted_sum / total_weight if total_weight > 0 else 0
    
      return {
           "overall_score": round(overall_score, 1),
+          "overall_verdict": overall_verdict,
           "claims": results,
           "claims_count": len(results),
      }
