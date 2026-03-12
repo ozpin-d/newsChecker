@@ -5,6 +5,9 @@ import hashlib
 import threading
 import asyncio
 import logging
+import jieba.posseg as pseg
+
+from urllib.parse import urlparse
 from typing import List, Dict, Optional
 from requests.adapters import HTTPAdapter
 from requests.exceptions import RequestException, HTTPError
@@ -75,6 +78,8 @@ class EvidenceRetriever:
             return cached
         
         evidences = self._call_baidu_api(claim) #调用百度API
+
+        evidences = self._filter_relevant(evidences, claim, threshold=0.1) #过滤不相关证据
 
         if original_url and original_title: #过滤同源证据
             evidences = self._filter_self_sources(evidences, original_url, original_title)
@@ -151,7 +156,7 @@ class EvidenceRetriever:
                         "title": ref.get("title"),
                         "snippet": ref.get("content","") or ref.get("snippet",""),
                         "link": ref.get("url", ""),
-                        "source": ref.get("wensite", "") or ref.get("source", ""),
+                        "source": ref.get("website", "") or ref.get("source", ""),
                         "date": ref.get("date",""),
                         "authority_score": ref.get("authority_score", 0),
                     })
@@ -203,6 +208,73 @@ class EvidenceRetriever:
             filtered.append(e)
         return filtered
     
+    def _filter_relevant(self, evidences: List[Dict], claim: str, threshold: float = 0.3) -> List[Dict]:
+        """
+        根据主张与证据标题/摘要的文本相似度过滤证据，保留相关性高的。
+
+        :param evidences: 原始证据列表
+        :param claim: 主张文本
+        :param threshold: 相似度阈值（0~1），低于该值的证据被丢弃
+        :return: 过滤后的证据列表
+        """
+        if not evidences: return []
+
+        # 定义需要保留的名词词性（可根据需要扩展）
+        # n: 普通名词, nr: 人名, ns: 地名, nt: 机构名, nz: 其他专名
+        core_pos = {'nr', 'ns', 'nt', 'nz'}
+        common_pos = {'n'}
+
+        words_with_pos = pseg.cut(claim)
+        core_keywords = []
+        common_keywords = []
+
+        for token in words_with_pos:
+            word = token.word
+            flag = token.flag
+            if len(word) < 2:
+                continue
+            if flag in core_pos:
+                core_keywords.append(word)
+            elif flag in common_pos:
+                common_keywords.append(word)
+
+        # 如果没提取到名词，不反回
+        if not common_keywords and not core_keywords:
+            logger.warning(f"主张‘{claim[:30]}’中未提取到关键词，无法验证，返回空")
+            return []
+            
+        logger.debug(f"提取核心关键词：{core_keywords}，普通名词：{common_keywords}")
+
+        filtered = []
+        min_total_match = 2
+
+        for e in evidences:
+            title = e.get("title", "")
+            snippet = e.get("snippet", "")
+            text = (title + " " + snippet).lower()
+
+            matched_core =[kw for kw in core_keywords if kw.lower() in text]
+            matched_common =[kw for kw in common_keywords if kw.lower() in text]
+
+            total_matched = len(matched_core) + len(matched_common)
+
+
+            if core_keywords:
+                if matched_core and total_matched >= min_total_match:
+                    filtered.append(e)
+                    logger.debug(f"保留相关性证据：{title[:30]}...关键词匹配成功:{matched_core},{matched_common}")
+                else:
+                    logger.debug(f"丢弃低相关性证据：{title[:30]}...关键词匹配失败(不满足条件)")
+            else:
+                if total_matched >= min_total_match:
+                    filtered.append(e)
+                    logger.debug(f"保留证据：{title[:30]}...关键词匹配成功:{matched_common}")
+                else:
+                    logger.debug(f"丢弃低相关性证据：{title[:30]}...关键词匹配失败(不满足{min_total_match}个)")
+            
+        logger.info(f"相关性过滤后保留 {len(filtered)}条证据")
+        return filtered
+
     def _make_cache_key(self, claim: str) -> str:
         """缓存key,使用hashlib加速"""
         return hashlib.md5(claim.encode('utf-8')).hexdigest()

@@ -2,6 +2,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .api.routes import router
 import uvicorn
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
 
 app = FastAPI(title="新闻谏言API")
 

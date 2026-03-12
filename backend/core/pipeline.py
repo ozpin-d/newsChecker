@@ -135,7 +135,17 @@ async def process_news(
           overall_score = avg_support if support_confidences else 0.0
 
      #整体判断标签
-     overall_verdict = "不实" if overall_score > 0.7 else "部分可信" if support_confidences else "证据不足"
+     if max_oppose >= 0.7:
+          overall_verdict = "不实"
+     elif support_confidences:
+          if avg_support >= 80:
+               overall_verdict = "高度可信"
+          elif avg_support >= 60:
+               overall_verdict = "基本可信"
+          else:
+               overall_verdict = "存疑"
+     else:
+          overall_verdict = "证据不足"
      # total_weight = 0.0
      # weighted_sum = 0.0
      # for r in results:
