@@ -9,3 +9,4 @@ chromadb==0.4.18
 pydantic==2.4.2
 newspaper3k==0.2.8
 tiktoken==0.7.0
+lxml_html_clean==0.4.4

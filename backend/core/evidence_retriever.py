@@ -21,7 +21,7 @@ class QuotaExceededError(Exception):
     pass
 
 class EvidenceRetriever:
-    def __int__(self,api_key: str):
+    def __init__(self,api_key: str):
         """初始化，需要提供API KEY"""
         if not api_key:
             raise ValueError("API KEY is null")
@@ -100,9 +100,9 @@ class EvidenceRetriever:
         """
         url = "https://qianfan.baidubce.com/v2/ai_search/web_search"
         payload  = {
-            "messages": [{"conetent": claim[:72], "role": "user"}],
+            "messages": [{"content": claim[:72], "role": "user"}],
             "search_source": "baidu_search_v2",
-            "resoruce_type_filter": [{"type": "web", "top_k": 10}],
+            "resource_type_filter": [{"type": "web", "top_k": 10}],
         }
 
         
@@ -225,7 +225,7 @@ class EvidenceRetriever:
             if len(self._cache) >= self.max_cache_size:
                 #按时间戳排序
                 items = sorted(self._cache.items(), key=lambda x: x[1][0])
-                for old_key, _ in items[:max(1, len(self._cache//10))]:
+                for old_key, _ in items[:max(1, len(self._cache)//10)]:
                     del self._cache[old_key]
             self._cache[key] = (time.time(), evidences)
         

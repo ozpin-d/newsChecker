@@ -34,7 +34,7 @@ class URLExtractor:
 
         #创建适配器
         adapter = HTTPAdapter(
-            pool_connection=pool_connections,
+            pool_connections=pool_connections,
             pool_maxsize=pool_connections * 2,
             max_retries=retries,
         )
@@ -49,7 +49,7 @@ class URLExtractor:
 
         #newspaper3k配置
         self._newspaper_config = NewspaperConfig()
-        self._newspaper_config.browser_user_agent = self.session.headers['User-Agent']
+        self._newspaper_config.browser_user_agent = self._session.headers['User-Agent']
         self._newspaper_config.request_timeout = timeout
         self._newspaper_config.memoize_articles = False #禁用缓存
         self._newspaper_config.fetch_images = False #禁用图片下载
