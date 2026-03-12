@@ -149,10 +149,11 @@ class EvidenceRetriever:
                 if ref.get("type") == "web":
                     evidences.append({
                         "title": ref.get("title"),
-                        "url": ref.get("url"),
-                        "content": ref.get("content"),
-                        "similarity": ref.get("similarity"),
-                        "type": ref.get("type"),
+                        "snippet": ref.get("content","") or ref.get("snippet",""),
+                        "link": ref.get("url", ""),
+                        "source": ref.get("wensite", "") or ref.get("source", ""),
+                        "date": ref.get("date",""),
+                        "authority_score": ref.get("authority_score", 0),
                     })
             return evidences
         except ValueError as e:

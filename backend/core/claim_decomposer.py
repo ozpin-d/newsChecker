@@ -82,7 +82,7 @@ def decompose_claim(news_text: str, max_claims: int = 10) -> List[str]:
         content = response.choices[0].message.content
         logger.debug(f"Decompose API start: {content[:200]}...")
 
-        result = json.loads()
+        result = json.loads(content)
         claims = result.get("claims", [])
         if not isinstance(claims, list):
             logger.error(f"API返回的不是列表: {type(claims)}")
