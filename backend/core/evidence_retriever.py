@@ -208,6 +208,7 @@ class EvidenceRetriever:
             filtered.append(e)
         return filtered
     
+    # def _search_rebuttal()
     def _filter_relevant(self, evidences: List[Dict], claim: str, threshold: float = 0.3) -> List[Dict]:
         """
         根据主张与证据标题/摘要的文本相似度过滤证据，保留相关性高的。

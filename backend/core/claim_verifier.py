@@ -60,7 +60,12 @@ def verify_claim(claim: str, evidences: List[Dict]) -> Dict:
         )
     evidence_text = "\n\n".join(evidences_lines)
 
-    system_msg = "你是一个专业事实核查员。请基于提供的证据，验证以下主张的真实性。\n权威性评分越高，证据越可靠。"
+    system_msg = """你是一个专业事实核查员。请基于提供的证据，验证以下主张的真实性。\n权威性评分越高，证据越可靠。
+    关键原则：
+    1. 如果主张是“某人将做某事”（如“将起诉”），而证据只是媒体转述或单方面宣称，并未提供该人实际采取行动的官方确认或可靠证据，应判定为“证据不足”或“反对”。
+    2. 如果证据中明确包含该人的官方声明、法律文书、当事人确认等，方可判定为“支持”。
+    3. 权威性低的来源（如百家号）应降低可信度，但如果有多个独立来源相互印证，可提高置信度。
+    """
     user_msg = (
         f"主张：{claim}\n\n"
         f"检索到的证据（按权威性从高到低排序）：\n{evidence_text}\n\n"
@@ -69,7 +74,7 @@ def verify_claim(claim: str, evidences: List[Dict]) -> Dict:
         "- confidence: 0-100的置信度分数\n"
         "- reason: 简要理由\n"
         "- key_evidence: 关键证据的链接列表\n"
-        "只返回JSON，不要有其他内容。\n"
+        "请严格依据上述原则进行判断，只返回JSON，不要有其他内容。\n"
     )
 
     client = _get_client()

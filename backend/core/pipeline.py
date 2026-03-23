@@ -4,8 +4,11 @@ from .claim_verifier import verify_claim
 from .evidence_retriever import EvidenceRetriever, QuotaExceededError
 from ..config import config
 from typing import Dict, List, Optional
+import logging
 import difflib
 import asyncio
+
+logger = logging.getLogger(__name__)
 
 retriever = EvidenceRetriever(config.BAIDU_API_KEY)#创建证据检索模块实例
 
@@ -113,6 +116,7 @@ async def process_news(
                "claims": [],
                "claims_count": 0,
                "overall_score": 0,
+               "overall_verdict": "无法判断",
                "note": "无法分解主张",
           }
      #2.并发执行
@@ -134,18 +138,36 @@ async def process_news(
      else:
           overall_score = avg_support if support_confidences else 0.0
 
+     #4.判断核心主张
+     core_keywords = ["起诉", "指控", "声称", "宣布", "爆料", "透露", "将"]
+     core_verdict = None #核心内容结果
+
+     for r in results:
+          claim = r["claim"]
+          if any(kw in claim for kw in core_keywords):
+               if r["verdict"] in ["反对", "证据不足"]:
+                    core_verdict = "存疑" if r["verdict"] == "证据不足" else "不实"
+                    break
+               elif r["verdict"] == "支持" and r["confidence"] < 50:
+                    core_verdict = "存疑"
+                    break
+     logger.debug(f"核心内容结果: {core_verdict}")
      #整体判断标签
-     if max_oppose >= 0.7:
-          overall_verdict = "不实"
-     elif support_confidences:
-          if avg_support >= 80:
-               overall_verdict = "高度可信"
-          elif avg_support >= 60:
-               overall_verdict = "基本可信"
+     if core_verdict is None:
+          if max_oppose >= 0.7:
+               overall_verdict = "不实"
+          elif support_confidences:
+               if avg_support >= 80:
+                    overall_verdict = "高度可信"
+               elif avg_support >= 60:
+                    overall_verdict = "基本可信"
+               else:
+                    overall_verdict = "存疑"
           else:
-               overall_verdict = "存疑"
+               overall_verdict = "证据不足"
      else:
-          overall_verdict = "证据不足"
+          overall_verdict = core_verdict
+     
      # total_weight = 0.0
      # weighted_sum = 0.0
      # for r in results:
