@@ -110,8 +110,8 @@ async def process_news(
     完整的新闻处理流水线
     """
      #1.分解
-     claims = decompose_claim(news_text)
-     if not claims:
+     claims_data = decompose_claim(news_text)
+     if not claims_data:
           return {
                "claims": [],
                "claims_count": 0,
@@ -120,8 +120,12 @@ async def process_news(
                "note": "无法分解主张",
           }
      #2.并发执行
-     tasks = [process_single_claim(claim, original_url, original_title) for claim in claims]
+     tasks = [process_single_claim(c["text"], original_url, original_title) for c in claims_data]
      results = await asyncio.gather(*tasks, return_exceptions=False)
+
+     #将重要结果合并到结果来里面
+     for i, r in enumerate(results):
+          r["importance"] = claims_data[i].get("importance", "medium")
 
      #3.计算可信度
      #优先计算反对主张的最高置信度
@@ -138,35 +142,40 @@ async def process_news(
      else:
           overall_score = avg_support if support_confidences else 0.0
 
-     #4.判断核心主张
-     core_keywords = ["起诉", "指控", "声称", "宣布", "爆料", "透露", "将"]
+     #4.判断核心主张（基于importance）
      core_verdict = None #核心内容结果
 
+     #优先使用high主张
      for r in results:
-          claim = r["claim"]
-          if any(kw in claim for kw in core_keywords):
+          if r.get("importance", "") == "high":
                if r["verdict"] in ["反对", "证据不足"]:
                     core_verdict = "存疑" if r["verdict"] == "证据不足" else "不实"
+                    logger.info(f"核心判断触发 (high): 主张 '{r['claim'][:30]}...' 判定为 {r['verdict']}")
                     break
                elif r["verdict"] == "支持" and r["confidence"] < 50:
                     core_verdict = "存疑"
+                    logger.info(f"核心判断触发 (high): 主张 '{r['claim'][:30]}...' 支持但置信度过低")
                     break
-     logger.debug(f"核心内容结果: {core_verdict}")
-     #整体判断标签
+
+     #如果没有high主张，使用medium
      if core_verdict is None:
-          if max_oppose >= 0.7:
-               overall_verdict = "不实"
-          elif support_confidences:
-               if avg_support >= 80:
-                    overall_verdict = "高度可信"
-               elif avg_support >= 60:
-                    overall_verdict = "基本可信"
-               else:
-                    overall_verdict = "存疑"
-          else:
-               overall_verdict = "证据不足"
-     else:
-          overall_verdict = core_verdict
+          for r in results:
+               if r.get("importance", "") == "medium":
+                    if r["verdict"] in ["反对", "证据不足"]:
+                         core_verdict = "存疑" if r["verdict"] == "证据不足" else "不实"
+                         logger.info(f"核心判断触发 (medium): 主张 '{r['claim'][:30]}...' 判定为 {r['verdict']}")
+                         break
+                    elif r["verdict"] == "支持" and r["confidence"] < 50:
+                         core_verdict = "存疑"
+                         logger.info(f"核心判断触发 (medium): 主张 '{r['claim'][:30]}...' 支持但置信度过低")
+                         break
+
+     #如果还是没有就返回默认值
+     if core_verdict is None:
+          core_verdict = "存疑，无结果"
+          logger.info("未触发核心判断，默认存疑")
+          
+     logger.debug(f"核心内容结果: {core_verdict}")
      
      # total_weight = 0.0
      # weighted_sum = 0.0

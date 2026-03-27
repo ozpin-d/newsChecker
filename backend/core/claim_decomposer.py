@@ -59,20 +59,18 @@ def decompose_claim(news_text: str, max_claims: int = 10) -> List[str]:
     
     truncated_text = _truncate_text(news_text)
 
-    system_msg = """你是一个专业的事实核查助手，请将用户的新闻文本分解成独立的、**可验证的客观事实主张**。
+    system_msg = """你是一个专业的事实核查助手，请将用户的新闻文本分解成独立的、**可验证的客观事实主张**，并为每个主张标注重要性等级。
     避免提取主观观点、猜测或人物心理。
-    每个主张必须是**包含具体实体（如具体的人名、地名、机构名、作品名、事件名称等）的事实陈述**。
-    如果新闻中提到了具体名称，必须在主张中使用完整名称，**不得使用“该剧”、“这位”、“这个”等代词或模糊指代**。
-    避免泛化描述（如“爆火”应具体到播放量、媒体报道等可验证的数据或事实）。
-    如果原文包含“某人声称/怀疑/认为某事”，请同时提取两个主张：
-    (1) 某人确实说了/做了某事（事实性）；
-    (2) 某事本身是否正确（客观事实）。
-    要求：
-    1. 每个主张应该是具体的事实陈述，而非观点或推测
-    2. 输出格式：以JSON数组形式返回，每个元素是一个字符串
-    3. 只返回JSON，不要有其他解释
+    重要性等级定义：
+    - high: 该主张是新闻的核心事实，如果被证伪则整篇新闻的可信度会严重下降。
+    - medium: 该主张是重要细节，但不是决定性事实。
+    - low: 该主张是次要信息或背景描述。
+    输出格式：JSON 对象，包含 "claims" 数组，每个元素是一个对象，包含 "text" (主张文本) 和 "importance" (字符串，取值为 high/medium/low)。
+    示例：
+    {"claims": [{"text": "某公司宣布破产", "importance": "high"}, {"text": "该公司成立于2000年", "importance": "low"}]}
+    只返回 JSON，不要有其他内容。
     """
-    user_msg = f"新闻文本：\n{truncated_text}\n\n请输出包含具体实体的客观事实主张，JSON格式：{{\"claims\": [\"主张1\", \"主张2\", ...]}}，最多 {max_claims} 条。"
+    user_msg = f"新闻文本：\n{truncated_text}\n\n请输出包含重要性等级的主张，JSON格式如上，最多 {max_claims} 条。"
 
     client = _get_client()
     try:
@@ -90,15 +88,36 @@ def decompose_claim(news_text: str, max_claims: int = 10) -> List[str]:
         logger.debug(f"Decompose API start: {content[:200]}...")
 
         result = json.loads(content)
-        claims = result.get("claims", [])
-        if not isinstance(claims, list):
-            logger.error(f"API返回的不是列表: {type(claims)}")
-            return []
+        claims_data = result.get("claims", [])
+        # if not isinstance(claims, list):
+        #     logger.error(f"API返回的不是列表: {type(claims)}")
+        #     return []
         
-        claims = [c.strip() for c in claims if c and isinstance(c, str)]
-        claims = claims[:max_claims]
-        logger.info(f"分解成功，分解数量：{len(claims)}")
-        return claims
+        # claims = [c.strip() for c in claims if c and isinstance(c, str)]
+        # claims = claims[:max_claims]
+
+        # 格式兼容：如果是字符串列表，转为带 importance 的字典
+        if claims_data and isinstance(claims_data[0], str):
+            claims = []
+            for claim in claims_data[:max_claims]:
+                if claim and isinstance(claim, str):
+                    claims.append({"text": claim.strip(), "importance": "medium"})
+            return claims
+        
+        #新格式字典
+        if claims_data and all(isinstance(c, dict) for c in claims_data):
+            claims = []
+            for item in claims_data[:max_claims]:
+                text = item.get("text", "").strip()
+                importance = item.get("importance", "medium")
+                if text:
+                    claims.append({"text": text, "importance": importance})
+            
+            logger.info(f"分解成功，分解数量：{len(claims)}")
+            return claims
+        else:
+            logger.error(f"API返回的格式错误: {type(claims_data)}")
+            return []
     
     except json.JSONDecodeError as e:
         logger.error(f"json 解析失败: {e},原始响应：{content[:200]}")
@@ -135,6 +154,13 @@ def decompose_claim(news_text: str, max_claims: int = 10) -> List[str]:
 #     1. 每个主张应该是具体的事实陈述，而非观点或推测
 #     2. 输出格式：以JSON数组形式返回，每个元素是一个字符串
 #     3. 只返回JSON，不要有其他解释
+
+    # 每个主张必须是**包含具体实体（如具体的人名、地名、机构名、作品名、事件名称等）的事实陈述**。
+    # 如果新闻中提到了具体名称，必须在主张中使用完整名称，**不得使用“该剧”、“这位”、“这个”等代词或模糊指代**。
+    # 避免泛化描述（如“爆火”应具体到播放量、媒体报道等可验证的数据或事实）。
+    # 如果原文包含“某人声称/怀疑/认为某事”，请同时提取两个主张：
+    # (1) 某人确实说了/做了某事（事实性）；
+    # (2) 某事本身是否正确（客观事实）。
 
 #     新闻文本：
 #     {news_text}
