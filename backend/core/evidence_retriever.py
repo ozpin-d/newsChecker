@@ -77,16 +77,29 @@ class EvidenceRetriever:
         if cached is not None:
             return cached
         
-        evidences = self._call_baidu_api(claim) #调用百度API
+        primary_evidences = self._call_baidu_api(claim) #调用百度API(原始搜索)
+        rebuttal_evidences = self._call_baidu_api(claim) #调用百度API(辟谣搜索)
 
-        evidences = self._filter_relevant(evidences, claim, threshold=0.1) #过滤不相关证据
+        #合并去重
+        all_evidences = primary_evidences + rebuttal_evidences
+        unique_evidences = []
+        seen_links = set()
+        for e in all_evidences:
+            link = e.get('link')
+            if link and link not in seen_links:
+                seen_links.add(link)
+                unique_evidences.append(e)
+            elif not link: #无链接的证据
+                unique_evidences.append(e)
+
+        unique_evidences = self._filter_relevant(unique_evidences, claim, threshold=0.1) #过滤不相关证据
 
         if original_url and original_title: #过滤同源证据
-            evidences = self._filter_self_sources(evidences, original_url, original_title)
+            unique_evidences = self._filter_self_sources(unique_evidences, original_url, original_title)
         
-        self._set_cache(cache_key, evidences) #缓存数据原子化操作
+        self._set_cache(cache_key, unique_evidences) #缓存数据原子化操作
 
-        return evidences
+        return unique_evidences
     
     def _call_baidu_api(self, claim: str) -> List[Dict]:
         """
@@ -208,7 +221,74 @@ class EvidenceRetriever:
             filtered.append(e)
         return filtered
     
-    # def _search_rebuttal()
+    def _search_rebuttal(self, claim: str) -> List[Dict]:
+        """
+        加强搜索辟谣类信息
+        返回可能为空
+        """
+        core_pos = {'nr', 'ns', 'nt', 'nz'}#人名，地名，机构名，专名
+        words_with_pos = pseg.cut(claim)
+        core_entitles = [token.word for token in words_with_pos if token.flag in core_pos and len(token.word) >= 2]
+
+        if not core_entitles:
+            logger.debug(f"找不到核心实体，无法进行加强搜索")
+            return []
+        
+        # 生成查询
+        query = "".join(core_entitles[:3]) + " 辟谣 回应"
+        if len(query) > 72:
+            query = query[:72]
+        
+        cache_key = f"rebuttal_{self._make_cache_key(claim)}"
+        cached = self._get_from_cache(cache_key)
+        if cached is not None:
+            logger.debug(f"辟谣search cache hit: {claim[:30]}...")
+            return cached
+        
+        payload = {
+            "messages": [{"content" : query, "role": "user"}],
+            "search_model" : "baidu_search_v2",
+            "resource_type_filter" : [{"type": "web", "top_k": 5}],
+        }
+
+        try:
+            resp = self._session.post(
+                "https://qianfan.baidubce.com/v2/ai_search/web_search",
+                json=payload,
+                timeout=15
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            evidences = []
+            for ref in data.get("references", []):
+                if ref.get("type") == "web":
+                    evidences.append({
+                        "title": ref.get("title"),
+                        "snippet": ref.get("content","") or ref.get("snippet",""),
+                        "link": ref.get("url", ""),
+                        "source": ref.get("website", "") or ref.get("source", ""),
+                        "date": ref.get("date",""),
+                        "authority_score": ref.get("authority_score", 0),
+                    })
+
+            #添加缓存
+            self._set_cache(cache_key, evidences)
+            logger.info(f"辟谣search return{len(evidences)}s info")
+            return evidences
+        except HTTPError as e:
+            status = e.response.status_code
+            if 400<= status < 500 and status != 429:
+                logger.error(f"辟谣请求失败 HTTP{status}, 跳过: {e}")
+            else:
+                logger.warning(f"辟谣无响应，交给重试机制:{e}")
+            return []
+        except RequestException as e:
+            logger.warning(f"网络异常:{e}")
+            return []
+        except Exception as e:
+            logger.exception(f"未知错误:{e}")
+            return []
+
     def _filter_relevant(self, evidences: List[Dict], claim: str, threshold: float = 0.3) -> List[Dict]:
         """
         根据主张与证据标题/摘要的文本相似度过滤证据，保留相关性高的。
@@ -246,6 +326,8 @@ class EvidenceRetriever:
             
         logger.debug(f"提取核心关键词：{core_keywords}，普通名词：{common_keywords}")
 
+        rebuttal_keywords = {"辟谣", "回应", "澄清", "否认", "不实", "声明"}
+
         filtered = []
         min_total_match = 2
 
@@ -253,6 +335,7 @@ class EvidenceRetriever:
             title = e.get("title", "")
             snippet = e.get("snippet", "")
             text = (title + " " + snippet).lower()
+            is_rebuttal = any(kw in text for kw in rebuttal_keywords)
 
             matched_core =[kw for kw in core_keywords if kw.lower() in text]
             matched_common =[kw for kw in common_keywords if kw.lower() in text]
@@ -261,15 +344,15 @@ class EvidenceRetriever:
 
 
             if core_keywords:
-                if matched_core and total_matched >= min_total_match:
+                if (matched_core and total_matched >= min_total_match) or (is_rebuttal and matched_core):
                     filtered.append(e)
-                    logger.debug(f"保留相关性证据：{title[:30]}...关键词匹配成功:{matched_core},{matched_common}")
+                    logger.debug(f"保留相关性证据：{title[:30]}...关键词匹配成功:{matched_core},{matched_common},辟谣({is_rebuttal})")
                 else:
                     logger.debug(f"丢弃低相关性证据：{title[:30]}...关键词匹配失败(不满足条件)")
             else:
                 if total_matched >= min_total_match:
                     filtered.append(e)
-                    logger.debug(f"保留证据：{title[:30]}...关键词匹配成功:{matched_common}")
+                    logger.debug(f"保留证据：{title[:30]}...关键词匹配成功:{matched_common},辟谣({is_rebuttal})")
                 else:
                     logger.debug(f"丢弃低相关性证据：{title[:30]}...关键词匹配失败(不满足{min_total_match}个)")
             
