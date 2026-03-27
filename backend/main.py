@@ -15,7 +15,7 @@ import os
 # )
 # ----------------log setting-----------------
 # log dir pending
-log_dir = "logs"
+log_dir = "./data/logs"
 os.makedirs(log_dir, exist_ok=True)
 
 #格式

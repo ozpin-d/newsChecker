@@ -174,8 +174,9 @@ async def process_news(
      if core_verdict is None:
           core_verdict = "存疑，无结果"
           logger.info("未触发核心判断，默认存疑")
-          
+
      logger.debug(f"核心内容结果: {core_verdict}")
+     overall_verdict = core_verdict
      
      # total_weight = 0.0
      # weighted_sum = 0.0
